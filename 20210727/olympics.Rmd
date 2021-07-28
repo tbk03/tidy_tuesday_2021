@@ -1,0 +1,179 @@
+---
+title: "Olympics"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(tidytuesdayR)
+
+source("../tidy_tuesday_function.R")
+```
+## Load data
+
+```{r}
+tuesdata <- tidytuesdayR::tt_load(2021, week = 31)
+
+olympics <- tuesdata$olympics
+
+View(olympics)
+```
+
+```{r}
+visdat::vis_miss(olympics, warn_large_data = FALSE)
+```
+```{r}
+skimr::skim(olympics)
+```
+
+```{r}
+olympics_plot <- olympics %>% 
+  
+  # focus on summer Olympics given they are going on now
+  filter(season == "Summer" & year > 1944) %>% 
+  
+  distinct(year, games, city, sport, event) %>% 
+  
+  # calculate total # games a sport has appeared at
+  group_by(sport) %>% 
+  mutate(num_games = n_distinct(year)) %>% 
+  ungroup() %>% 
+  
+  # calculate number events for each sport at each games
+  group_by(year, sport) %>% 
+  mutate(sport_num_events = n_distinct(event)) %>% 
+  ungroup() %>% 
+  
+  # calculate total number of events at each games
+  group_by(year) %>% 
+  mutate(total_num_events = n_distinct(event)) %>% 
+  ungroup() %>% 
+  
+  # calculate proportion of events for a given sport
+  mutate(prop_events = sport_num_events / total_num_events)
+
+ggplot(olympics_plot) +
+  geom_tile(aes(year, fct_reorder(sport, num_games), fill = prop_events),
+             alpha = 0.5) +
+  scale_fill_viridis_c() +
+  theme_minimal()
+```
+```{r}
+sysfonts::font_add_google("Lato", "Lato")
+```
+
+
+```{r}
+sport_of_int <- c("Wrestling", "Swimming", "Athletics", "Gymnastics")
+
+olympics_plot_2 <- olympics_plot %>% 
+  mutate(sport_simp = case_when(
+    sport %in% sport_of_int ~ sport,
+    TRUE ~ "other"
+  ))
+
+#showtext::showtext.auto()
+
+ggplot(olympics_plot_2) +
+  geom_line(aes(year,prop_events, group = sport, colour = sport_simp)) +
+  scale_x_continuous(breaks = seq(1948, 2016, 8))+
+  labs(x = NULL) +
+  explanatory_theme_2()
+
+ggsave("prop_medals.svg", units = "mm", width = 185, height = 93.3)
+#showtext::showtext.auto(FALSE)
+```
+
+```{r}
+olympics_plot_2 %>% 
+  filter(sport_simp != "other") %>% 
+  group_by(year, sport) %>% 
+  summarise(medals = n())
+
+olympics_plot_2 %>% 
+  filter(year == 1948) %>% 
+  distinct(event)
+  group_by(sport) %>% 
+  summarise(sports = n())
+```
+
+```{r}
+sports_1948 <- olympics_plot %>% 
+  filter(year == 1948) %>% 
+  distinct(sport) %>% 
+  pull(sport)
+
+all_sport <- olympics_plot %>% 
+  filter(year >= 1948) %>% 
+  distinct(sport) 
+
+num_medals_1948 <- olympics_plot %>% 
+  filter(year == 1948) %>% 
+  count(sport)
+
+baseline_num_medals <- all_sport %>% 
+  left_join(num_medals_1948) %>% 
+  mutate(n = replace_na(n, 0)) %>% 
+  rename(baseline_num_medals = n)
+
+olympics_plot_3 <- olympics %>% 
+  filter(year >= 1948 & season == "Summer") %>% 
+  group_by(year, sport) %>% 
+  summarise(num_events = n_distinct(event)) %>% 
+  mutate(established_sport = sport %in% sports_1948) %>% 
+  left_join(baseline_num_medals) %>% 
+  mutate(change_in_medals = num_events - baseline_num_medals) %>% 
+  group_by(year, established_sport) %>% 
+  summarise(change_in_medals = sum(change_in_medals)) %>% 
+  mutate(change_in_medals = if_else(established_sport,
+                                    -change_in_medals,
+                                    change_in_medals))
+
+first_appearances <- olympics %>% 
+  filter(year >= 1948 & season == "Summer") %>% 
+  filter(!sport %in% sports_1948) %>% 
+  group_by(sport) %>% 
+  summarise(first_appearance = min(year)) %>% 
+  mutate(dummy_y = 50)
+
+ggplot(olympics_plot_3) +
+  geom_ribbon(aes(x = year, ymax = change_in_medals, fill = established_sport),
+              ymin = 0, alpha = 0.8) +
+  
+  geom_dotplot(data = first_appearances,
+             mapping = aes(first_appearance, dummy_y)) +
+  
+  geom_text(data = first_appearances,
+             mapping = aes(first_appearance, dummy_y, label = sport)) +
+  
+  scale_x_continuous(breaks = seq(1948, 2016, 8)) +
+  scale_y_continuous(breaks = seq(-125, 75, 25)) +
+  
+  explanatory_theme_2() +
+  theme(panel.grid.major.y = ggplot2::element_line(colour = "grey90"),
+        legend.position = "none") +
+  coord_flip()
+
+ggsave("growth_in_gold medals.svg", units = "mm", width = 185, height = 93.3)
+
+```
+```{r}
+olympics_plot_3 %>% 
+  ggplot() +
+  geom_col(aes(year, change_in_medals), colour = "white", position = "dodge")
+
+
+df <- tribble(
+  ~year, ~building, ~storey,
+  1992, "build", 1,
+  1992, "build", 1,
+  1992, "build", 1,
+  1992, "build2", 1,
+  1992, "build2", 1,
+  1992, "build2", 1,
+)
+
+ggplot(df, aes(factor(year), storey, group = "building", fill = building)) +
+  geom_col(colour = "white", position = "stack")
+```
+
