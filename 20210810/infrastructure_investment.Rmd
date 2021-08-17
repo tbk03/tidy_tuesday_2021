@@ -1,0 +1,340 @@
+---
+title: "Tidy Tuesday: Infrastructure Investment"
+author: "Dr. Chris J. Martin"
+date: "`r format(Sys.time(), '%a %d %B, %Y')`"
+output: html_document 
+---
+
+## Set up
+
+```{r, setup}
+knitr::opts_chunk$set(echo = TRUE)
+
+# this is for rendering custom fonts in markdown
+# but it doesn;t appear to be working ...
+
+ragg_png_wrapper = function(..., res = 150) {
+  ragg::agg_png(..., res = res, units = "in")
+}
+
+knitr::opts_chunk$set(dev = ragg_png_wrapper)
+```
+
+```{r}
+library(tidyverse)
+
+library(ggtext)     # improved text rendering for ggplot2
+library(ggforce)    # extra functionality for ggplot2 inc. improved annotation
+library(patchwork)  # composing layouts with multiple plots
+library(ggdist)     # visualising uncertainty and distributions
+library(readxl)     # for reading excel files
+library(lubridate)  # for dates
+
+# packages for using custom fonts
+library(systemfonts)
+library(textshaping)
+
+library(cjmr)       # my own package including default styling for plots
+
+# set default theme for exploratory plots
+theme_set(theme_light())
+```
+
+```{r}
+mtcars %>% 
+  ggplot(aes(wt, hp)) +
+  geom_point() +
+  theme_cjmr_explanatory()+
+  #clean_axis() +
+  scale_y_continuous(breaks = seq(0,350, 50), limits = c(0, 350))
+```
+
+## Source of info on common ggplot2 tasks
+
+-   A short and general reference to common tasks at the BBC: <https://bbc.github.io/rcookbook/>
+
+-   ggplot2 wizardry by Cédric Scherer - <https://z3tt.github.io/OutlierConf2021/>
+
+-   R Graphics Cookbook by W. Chang - <https://r-graphics.org/>
+
+-   Custom fonts - <https://yjunechoe.github.io/posts/2021-06-24-setting-up-and-debugging-custom-fonts/>
+
+## Useful code snippets
+
+[Changing the size of a legend](https://z3tt.github.io/OutlierConf2021/#legend-design) - Cédric Scherer
+
+```{r}
+guides(color = guide_colorbar(title.position = "top", 
+                                title.hjust = .5, 
+                                barwidth = unit(20, "lines"), 
+                                barheight = unit(.5, "lines")))
+
+```
+
+[Changing margins](https://z3tt.github.io/OutlierConf2021/#white-space) - Cédric Scherer
+
+```{r}
+theme(plot.margin = margin(t = 25, r = 25, b = 10, l = 25)) # top, right, bottom, left
+```
+
+Adjusting axis
+
+```{r}
+scale_y_continuous(breaks = seq(0,350, 50), # labels
+                   limits = c(0, 350)) # extent of axis
+```
+
+## Colour palettes
+
+## Remember it is an iterative process
+
+## Import data
+
+Note in the tidy tuesday data the chained investment amounts appear to be baselined in 2012 dollar (as standard) rather than 2021 dollar as stated in the data dictionary.
+
+Complementary data from:
+
+-   FRED - GDP also chained to 2012 dollars (<https://fred.stlouisfed.org/series/GDPC1>)
+
+-   NBER - Recession data (<https://www.nber.org/research/data/us-business-cycle-expansions-and-contractions>)
+
+```{r}
+# tidy tuesday data 
+tuesdata <- tidytuesdayR::tt_load('2021-08-10')
+tuesdata <- tidytuesdayR::tt_load(2021, week = 33)
+
+investment <- tuesdata$investment
+chain_investment <- tuesdata$chain_investment
+ipd <- tuesdata$ipd
+
+# gdp data 
+gdp <- read_xls("GDPC1.xls", skip = 10) %>% 
+  janitor::clean_names()
+
+# recessions data
+recessions <- read_xlsx("bcdc_07192021_0 (1) (3).xlsx", skip = 1) %>% 
+  janitor::clean_names()
+
+```
+
+## Clean data
+
+Check missing data
+
+```{r}
+list(investment, chain_investment, ipd, gdp, recessions) %>% 
+  map(visdat::vis_miss)
+
+
+
+```
+
+The recession data needs a bit more cleaning up. I am happy with the other datasets for now.
+
+```{r}
+recessions_clean <- recessions %>% 
+  
+  # remove rows around the actual data
+  slice(-c(1:2)) %>% 
+  slice(-c(35:41)) %>% 
+  
+  mutate(start = str_replace(peak_month_peak_quarter, "\\(.*\\)", ""),
+         end = str_replace(trough_month_trough_quarter, "\\(.*\\)", ""),
+
+        # trim trailing whitespace
+        start = str_trim(start),
+        end = str_trim(end),
+         
+         start = lubridate::my(start),
+         end = lubridate::my(end) %m+% months(1)) %>% 
+  
+  select(start, end)
+
+gdp_clean <- gdp %>% 
+  mutate(date = date(observation_date)) %>% 
+  rename(gdp = gdpc1) %>% 
+  select(date, gdp) 
+
+
+  
+  
+
+```
+
+## Explore the data
+
+I think I am going to focus on the chained investment figures
+
+```{r}
+chain_investment %>% 
+  distinct(meta_cat)
+
+chain_investment %>% 
+  distinct(category)
+
+```
+
+```{r}
+invest_overview <- chain_investment %>% 
+  
+  mutate(investor = !str_detect(category, "infrastructure")) %>% 
+  filter(meta_cat == "Total infrastructure")
+  
+  ggplot(invest_overview) +
+  geom_area(aes(year, gross_inv_chain, fill = category)) +
+  facet_wrap(~investor) + 
+  theme_cjmr_explanatory()
+```
+
+```{r}
+ggplot(invest_overview) +
+  geom_line(aes(year, gross_inv_chain, colour = category)) +
+  facet_wrap(~investor) + 
+  theme_cjmr_explanatory()
+```
+
+See page 41 of report for how infrastructure types breakdown <https://www.bea.gov/system/files/papers/BEA-WP2020-12.pdf>
+
+```{r}
+chain_investment %>% 
+  filter(str_detect(str_to_lower(category), "private")) %>% 
+  filter(category != "Private") %>% 
+  group_by(category) %>% 
+  mutate(max_invest = max(gross_inv_chain),
+         high_invest = max_invest > 5e+04,
+         cat_simp = case_when(
+           high_invest == TRUE ~ category,
+           TRUE ~ "other"
+         )) %>% 
+  
+  ggplot() +
+  geom_line(aes(year, gross_inv_chain, colour = cat_simp, group = category)) +
+  theme_cjmr_explanatory()
+  
+```
+
+## Explore the context of the data
+
+-   **Who collected the data?**
+
+-   **Why was the data collected?**
+
+-   **What is the data used for?**
+
+-   **Are there some other datasets that might be useful for comparisons?**
+
+## Think about the audience
+
++-----------------------------------------------------------------------------------+-------+
+| To think about                                                                    | Notes |
++===================================================================================+=======+
+| Can you think of a group of people who might view the visualisations?             |       |
++-----------------------------------------------------------------------------------+-------+
+| Can you think of a specific person who might view the visualizations?             |       |
++-----------------------------------------------------------------------------------+-------+
+| What do want the audience to know or be able to after viewing the visualizations? |       |
++-----------------------------------------------------------------------------------+-------+
+| What expectations might the audience have about visualisations of this data?      |       |
++-----------------------------------------------------------------------------------+-------+
+
+## Ask some questions to be answered by the visualizations
+
+1.  ...
+
+2.  ...
+
+## Summarize the story that the visualizations can help tell
+
+Based on the questions above, the story might go something like this:
+
+-   ...
+
+-   ...
+
+## Create the visualisation/s
+
+### Visualization 1 (question n)
+
++-------------+---------------------+-----------------------------------------------+
+| Question    | Answer (i.e. title) | Notes to consider in design, chart types etc. |
++=============+=====================+===============================================+
+|             |                     |                                               |
++-------------+---------------------+-----------------------------------------------+
+
+```{r}
+
+```
+
+### Visualization x (question n)
+
++-------------+---------------------+-----------------------------------------------+
+| Question    | Answer (i.e. title) | Notes to consider in design, chart types etc. |
++=============+=====================+===============================================+
+|             |                     |                                               |
++-------------+---------------------+-----------------------------------------------+
+
+```{r}
+
+```
+
+### Visualization x (question n)
+
++-------------+---------------------+-----------------------------------------------+
+| Question    | Answer (i.e. title) | Notes to consider in design, chart types etc. |
++=============+=====================+===============================================+
+|             |                     |                                               |
++-------------+---------------------+-----------------------------------------------+
+
+```{r}
+
+```
+
+## Export the visualizations for editing
+
+Some useful image sizes (mm unless stated)
+
++---------------------------------------------------+--------+---------+
+| Purpose                                           | Width  | Height  |
++===================================================+========+=========+
+| Single plot for Twitter                           |        |         |
++---------------------------------------------------+--------+---------+
+|                                                   |        |         |
++---------------------------------------------------+--------+---------+
+|                                                   |        |         |
++---------------------------------------------------+--------+---------+
+
+```{r}
+
+file_folder <- ""
+file_name <- "holding_name"
+
+ggsave(str_c(file_folder, file_name, ".svg"))
+
+# if saving as a pdf use device = cairo_pdf in ggsave 
+```
+
+## Import back in the vizualisation as an image
+
+## Consider how well the overall design works
+
+Based on [Flowing Data](https://flowingdata.com/visualization-for-clarity/designing-for-an-audience/adjusting-for-the-differences/).
+
+Think about each issue (in bold below) as a continuum rather than a check-box.
+
++-----------------------------------------------------+--------------------------------------------------------------+----------+
+| Question to consider                                | Tips                                                         | Notes    |
++=====================================================+==============================================================+==========+
+| Are the **encodings** explained?                    | Air on the side of too much explanation ...                  |          |
++-----------------------------------------------------+--------------------------------------------------------------+----------+
+| Is the **context** explained?                       | Titles, subtitles                                            |          |
+|                                                     |                                                              |          |
+|                                                     | Annotate                                                     |          |
+|                                                     |                                                              |          |
+|                                                     | Use colour to highlight                                      |          |
++-----------------------------------------------------+--------------------------------------------------------------+----------+
+| Does it have **readability** like text?             | Think visual hierarchy *(as when laying out text)*           |          |
++-----------------------------------------------------+--------------------------------------------------------------+----------+
+| Do the **aesthetics** align with the topic/message? | Serious topic -\> dark colours, straight-forward chart types |          |
++-----------------------------------------------------+--------------------------------------------------------------+----------+
+
+## Remember it is an iterative process
