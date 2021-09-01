@@ -1,0 +1,336 @@
+---
+title: "Tidy Tueaday: Bird Baths"
+author: "Dr. Chris J. Martin"
+date: "`r format(Sys.time(), '%a %d %B, %Y')`"
+output: html_document 
+---
+
+## Set up
+
+```{r, setup}
+knitr::opts_chunk$set(echo = TRUE)
+
+# this is for rendering custom fonts in markdown
+# but it doesn;t appear to be working ...
+
+ragg_png_wrapper = function(..., res = 150) {
+  ragg::agg_png(..., res = res, units = "in")
+}
+
+knitr::opts_chunk$set(dev = ragg_png_wrapper)
+```
+
+```{r}
+library(tidyverse)
+
+library(ggtext)     # improved text rendering for ggplot2
+library(ggforce)    # extra functionality for ggplot2 inc. improved annotation
+library(patchwork)  # composing layouts with multiple plots
+library(ggdist)     # visualising uncertainty and distributions
+library(readxl)     # for reading Excel files
+library(lubridate)  # for dates
+library(readxl)     # for reading excel files
+library(patchwork)  # for composing layouts of multiple plots
+
+# packages for using custom fonts
+library(systemfonts)
+library(textshaping)
+
+library(cjmr)       # my own package including default styling for plots
+
+# set default theme for exploratory plots
+theme_set(theme_light())
+```
+
+## Source of info on common ggplot2 tasks
+
+-   A short and general reference to common tasks at the BBC: <https://bbc.github.io/rcookbook/>
+
+-   ggplot2 wizardry by Cédric Scherer - <https://z3tt.github.io/OutlierConf2021/>
+
+-   R Graphics Cookbook by W. Chang - <https://r-graphics.org/>
+
+-   Custom fonts - <https://yjunechoe.github.io/posts/2021-06-24-setting-up-and-debugging-custom-fonts/>
+
+## Useful code snippets
+
+[Changing the size of a legend](https://z3tt.github.io/OutlierConf2021/#legend-design) - Cédric Scherer
+
+```{r, eval=FALSE}
+guides(color = guide_colorbar(title.position = "top", 
+                                title.hjust = .5, 
+                                barwidth = unit(20, "lines"), 
+                                barheight = unit(.5, "lines")))
+
+```
+
+[Changing margins](https://z3tt.github.io/OutlierConf2021/#white-space) - Cédric Scherer
+
+```{r, eval=FALSE}
+theme(plot.margin = margin(t = 25, r = 25, b = 10, l = 25)) # top, right, bottom, left
+```
+
+Adjusting axis
+
+```{r, eval=FALSE}
+scale_y_continuous(breaks = seq(0,350, 50), # labels
+                   limits = c(0, 350)) # extent of axis
+```
+
+## Colour palettes
+
+## Remember it is an iterative process
+
+## Import data
+
+```{r}
+bird_baths <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-08-31/bird_baths.csv')
+```
+
+## Clean data
+
+```{r}
+bird_baths %>% 
+  visdat::vis_miss()
+```
+
+## Explore the data
+
+```{r}
+bird_baths %>% 
+  skimr::skim()
+```
+
+```{r}
+p <- ggplot(bird_baths, aes(bird_count)) +
+  geom_histogram() +
+  scale_y_log10() +
+  facet_wrap(~survey_year)
+
+p 
+
+p + scale_x_continuous(limits = c(0,10))
+
+
+ggplot(bird_baths, aes(factor(survey_year), bird_count)) +
+  geom_boxplot()
+```
+```{r}
+bird_baths_clean <- bird_baths %>% 
+  na.omit() %>% 
+  filter(bird_count > 0) 
+
+counts_by_bioregion <- bird_baths_clean %>% 
+  count(bioregions, bird_type)
+  
+counts_by_bioregion
+```
+
+```{r}
+bird_baths_clean %>% 
+  count(survey_year, bird_type) %>% 
+  
+  ggplot(aes(fct_reorder(bird_type, n), n)) +
+  geom_col(stat = "count") +
+  coord_flip() +
+  facet_wrap(~survey_year)
+
+```
+```{r}
+seasonal_counts <- bird_baths_clean %>% 
+  count(survey_year, urban_rural, bird_type) %>% 
+  pivot_wider(names_from = survey_year, values_from = n, values_fill = 0) %>% 
+  mutate(change_in_obs = `2015` - `2014`) %>% 
+  #filter(abs(change_in_obs) >= 10) %>% 
+  arrange(bird_type, change_in_obs) %>% 
+  mutate(direction_of_change = if_else(
+    change_in_obs > 0, "rise", "fall"
+  ))
+
+
+trend_types <- seasonal_counts %>% 
+  select(-direction_of_change, -`2014`, -`2015`) %>% 
+  pivot_wider(names_from = urban_rural, values_from = change_in_obs, values_fill = 0) %>%
+  mutate(trend_type = case_when(
+    (Rural >= 0 & Urban >= 0) ~ "rising_both",
+     (Rural < 0 & Urban < 0) ~ "falling_both",
+     (Rural >= 0 & Urban < 0) ~ "rising_r_falling_u",
+     (Rural < 0 & Urban >= 0) ~ "rising_u_falling_r",
+     TRUE ~ "error")
+  ) %>% 
+  filter((abs(Rural) >= 5) & abs(Urban) >= 5) %>% 
+  select(bird_type, trend_type)
+
+
+plotting_df <- seasonal_counts %>% 
+  select(-direction_of_change) %>% 
+  inner_join(trend_types) %>% 
+  #select(-change_in_obs) %>% 
+  pivot_longer(cols = c(`2014`,`2015`), names_to = "year", values_to = "n") %>% 
+  #filter(bird_type == "Australian Magpie") 
+  {.}
+
+urban_df <- plotting_df %>% 
+  filter(urban_rural == "Urban")
+
+rural_df <- plotting_df %>% 
+  filter(urban_rural == "Rural")
+
+urban_line_df <-  urban_df %>% 
+  pivot_wider(names_from = year, values_from = n)
+
+rural_line_df <-  rural_df %>% 
+  pivot_wider(names_from = year, values_from = n)
+
+
+  ggplot() +
+  geom_point(data = urban_df, position = position_nudge(x = 0, y = 0.1),
+             mapping = aes(n, bird_type, colour = year, shape = urban_rural)) +
+  geom_segment(data = urban_line_df, position = position_nudge(x = 0, y = 0.1),
+               mapping = aes(y = bird_type, yend = bird_type,
+                             x = `2014`, xend = `2015`)) + 
+    
+  geom_point(data = rural_df, position = position_nudge(x = 0, y = -0.1),
+             mapping = aes(n, bird_type, colour = year, shape = urban_rural)) +
+    
+    geom_segment(data = rural_line_df, position = position_nudge(x = 0, y = -0.1),
+               mapping = aes(y = bird_type, yend = bird_type,
+                             x = `2014`, xend = `2015`)) +
+    facet_wrap(~trend_type, scales = "free_y") +
+    theme_cjmr_explanatory()
+  
+  # ggplot(aes(n, bird_type, colour = year)) +
+  # geom_point() +
+  # facet_wrap(~trend_type)
+  
+  
+trend_types %>% 
+  count(trend_type)
+```
+
+
+## Explore the context of the data
+
+-   **Who collected the data?**
+
+-   **Why was the data collected?**
+
+-   **What is the data used for?**
+
+-   **Are there some other datasets that might be useful for comparisons?**
+
+## Think about the audience
+
++-----------------------------------------------------------------------------------+-------+
+| To think about                                                                    | Notes |
++===================================================================================+=======+
+| Can you think of a group of people who might view the visualisations?             |       |
++-----------------------------------------------------------------------------------+-------+
+| Can you think of a specific person who might view the visualizations?             |       |
++-----------------------------------------------------------------------------------+-------+
+| What do want the audience to know or be able to after viewing the visualizations? |       |
++-----------------------------------------------------------------------------------+-------+
+| What expectations might the audience have about visualisations of this data?      |       |
++-----------------------------------------------------------------------------------+-------+
+
+## Ask some questions to be answered by the visualizations
+
+1.  ...
+
+2.  ...
+
+## Summarize the story that the visualizations can help tell
+
+Based on the questions above, the story might go something like this:
+
+-   ...
+
+-   ...
+
+## Create the visualisation/s
+
+### Visualization 1 (question n)
+
++-----------+---------------------+-----------------------------------------------+
+| Question  | Answer (i.e. title) | Notes to consider in design, chart types etc. |
++===========+=====================+===============================================+
+|           |                     |                                               |
++-----------+---------------------+-----------------------------------------------+
+
+```{r}
+
+```
+
+### Visualization x (question n)
+
++-----------+---------------------+-----------------------------------------------+
+| Question  | Answer (i.e. title) | Notes to consider in design, chart types etc. |
++===========+=====================+===============================================+
+|           |                     |                                               |
++-----------+---------------------+-----------------------------------------------+
+
+```{r}
+
+```
+
+### Visualization x (question n)
+
++-----------+---------------------+-----------------------------------------------+
+| Question  | Answer (i.e. title) | Notes to consider in design, chart types etc. |
++===========+=====================+===============================================+
+|           |                     |                                               |
++-----------+---------------------+-----------------------------------------------+
+
+```{r}
+
+```
+
+## Export the visualizations for editing
+
+Some useful image sizes (mm unless stated)
+
++---------------------------------------------------+--------+---------+
+| Purpose                                           | Width  | Height  |
++===================================================+========+=========+
+| Single plot for Twitter                           |        |         |
++---------------------------------------------------+--------+---------+
+|                                                   |        |         |
++---------------------------------------------------+--------+---------+
+|                                                   |        |         |
++---------------------------------------------------+--------+---------+
+
+```{r}
+
+file_folder <- ""
+file_name <- "holding_name"
+
+ggsave(str_c(file_folder, file_name, ".svg"))
+
+# if saving as a pdf use device = cairo_pdf in ggsave 
+```
+
+## Import back in the vizualisation as an image
+
+## Consider how well the overall design works
+
+Based on [Flowing Data](https://flowingdata.com/visualization-for-clarity/designing-for-an-audience/adjusting-for-the-differences/).
+
+Think about each issue (in bold below) as a continuum rather than a check-box.
+
++-----------------------------------------------------+--------------------------------------------------------------+-------+
+| Question to consider                                | Tips                                                         | Notes |
++=====================================================+==============================================================+=======+
+| Are the **encodings** explained?                    | Air on the side of too much explanation ...                  |       |
++-----------------------------------------------------+--------------------------------------------------------------+-------+
+| Is the **context** explained?                       | Titles, subtitles                                            |       |
+|                                                     |                                                              |       |
+|                                                     | Annotate                                                     |       |
+|                                                     |                                                              |       |
+|                                                     | Use colour to highlight                                      |       |
++-----------------------------------------------------+--------------------------------------------------------------+-------+
+| Does it have **readability** like text?             | Think visual hierarchy *(as when laying out text)*           |       |
++-----------------------------------------------------+--------------------------------------------------------------+-------+
+| Do the **aesthetics** align with the topic/message? | Serious topic -\> dark colours, straight-forward chart types |       |
++-----------------------------------------------------+--------------------------------------------------------------+-------+
+
+## Remember it is an iterative process
