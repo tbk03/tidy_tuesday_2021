@@ -168,7 +168,10 @@ plotting_df <- seasonal_counts %>%
   #select(-change_in_obs) %>% 
   pivot_longer(cols = c(`2014`,`2015`), names_to = "year", values_to = "n") %>% 
   #filter(bird_type == "Australian Magpie") 
-  {.}
+  group_by(bird_type) %>% 
+  mutate(max_n = max(n)) %>% 
+  ungroup() %>% 
+  mutate(bird_type = tidytext::reorder_within(bird_type, n, trend_type))
 
 urban_df <- plotting_df %>% 
   filter(urban_rural == "Urban")
@@ -182,27 +185,48 @@ urban_line_df <-  urban_df %>%
 rural_line_df <-  rural_df %>% 
   pivot_wider(names_from = year, values_from = n)
 
-
-  ggplot() +
-  geom_point(data = urban_df, position = position_nudge(x = 0, y = 0.1),
-             mapping = aes(n, bird_type, colour = year, shape = urban_rural)) +
+ggplot() +
+  
+  # plot urban data
   geom_segment(data = urban_line_df, position = position_nudge(x = 0, y = 0.1),
                mapping = aes(y = bird_type, yend = bird_type,
                              x = `2014`, xend = `2015`)) + 
-    
-  geom_point(data = rural_df, position = position_nudge(x = 0, y = -0.1),
-             mapping = aes(n, bird_type, colour = year, shape = urban_rural)) +
-    
-    geom_segment(data = rural_line_df, position = position_nudge(x = 0, y = -0.1),
+  
+  geom_point(data = urban_df, position = position_nudge(x = 0, y = 0.1),
+             mapping = aes(n, bird_type, 
+                           colour = urban_rural, 
+                           shape = urban_rural,
+                           fill = year),
+             size = 2) +
+  
+  # plot rural data  
+  geom_segment(data = rural_line_df, position = position_nudge(x = 0, y = -0.1),
                mapping = aes(y = bird_type, yend = bird_type,
                              x = `2014`, xend = `2015`)) +
-    facet_wrap(~trend_type, scales = "free_y") +
-    theme_cjmr_explanatory()
+  
+  geom_point(data = rural_df, position = position_nudge(x = 0, y = -0.1),
+             mapping = aes(n, bird_type, 
+                           colour = urban_rural, 
+                           shape = urban_rural,
+                           fill = year),
+             size = 2.5) +
+  
+  scale_shape_manual(values = c(21, 24)) +
+  scale_fill_manual(values = c("white", "black")) +
+  scale_x_continuous(breaks = seq(0, 150, 25)) +
+  tidytext::scale_y_reordered() +
+  
+  labs(x = NULL) +
+  
+  facet_wrap(~trend_type, scales = "free_y") +
+  theme_cjmr_explanatory() +
+  theme(legend.position = "none")
   
   # ggplot(aes(n, bird_type, colour = year)) +
   # geom_point() +
   # facet_wrap(~trend_type)
   
+ggsave("bird_baths.svg", units = "mm", height = 130, width = 207.5)
   
 trend_types %>% 
   count(trend_type)
