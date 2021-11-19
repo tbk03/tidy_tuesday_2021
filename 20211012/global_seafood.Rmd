@@ -1,0 +1,293 @@
+---
+title: "Viz Template"
+author: "Dr. Chris J. Martin"
+date: "`r format(Sys.time(), '%a %d %B, %Y')`"
+output: html_document 
+---
+
+## Set up
+
+```{r, setup}
+knitr::opts_chunk$set(echo = TRUE)
+
+# this is for rendering custom fonts in markdown
+# but it doesn;t appear to be working ...
+
+ragg_png_wrapper = function(..., res = 150) {
+  ragg::agg_png(..., res = res, units = "in")
+}
+
+knitr::opts_chunk$set(dev = ragg_png_wrapper)
+```
+
+```{r}
+library(tidyverse)
+
+library(ggtext)     # improved text rendering for ggplot2
+library(ggforce)    # extra functionality for ggplot2 inc. improved annotation
+library(patchwork)  # composing layouts with multiple plots
+library(ggdist)     # visualising uncertainty and distributions
+library(readxl)     # for reading Excel files
+library(lubridate)  # for dates
+library(readxl)     # for reading excel files
+
+# packages for using custom fonts
+# library(systemfonts)
+# library(textshaping)
+library(ragg)
+
+library(cjmr)       # my own package including default styling for plots
+
+# set default theme for exploratory plots
+theme_set(theme_light())
+```
+
+## Source of info on common ggplot2 tasks
+
+-   A short and general reference to common tasks at the BBC: <https://bbc.github.io/rcookbook/>
+
+-   ggplot2 wizardry by Cédric Scherer - <https://z3tt.github.io/OutlierConf2021/>
+
+-   R Graphics Cookbook by W. Chang - <https://r-graphics.org/>
+
+-   Custom fonts - <https://yjunechoe.github.io/posts/2021-06-24-setting-up-and-debugging-custom-fonts/>
+
+## Useful code snippets
+
+[Changing the size of a legend](https://z3tt.github.io/OutlierConf2021/#legend-design) - Cédric Scherer
+
+```{r, eval=FALSE}
+guides(color = guide_colorbar(title.position = "top", 
+                                title.hjust = .5, 
+                                barwidth = unit(20, "lines"), 
+                                barheight = unit(.5, "lines")))
+
+```
+
+[Changing margins](https://z3tt.github.io/OutlierConf2021/#white-space) - Cédric Scherer
+
+```{r, eval=FALSE}
+theme(plot.margin = margin(t = 25, r = 25, b = 10, l = 25)) # top, right, bottom, left
+```
+
+Adjusting axis
+
+```{r, eval=FALSE}
+scale_y_continuous(breaks = seq(0,350, 50), # labels
+                   limits = c(0, 350)) # extent of axis
+```
+
+Saving using custom fonts with ragg
+
+```{r}
+ggplot(mtcars, aes(hp, mpg)) +
+  geom_point() +
+  labs(title = "22222222222222222") +
+  theme(text = element_text(family = "Roboto"),
+        plot.title = element_text(size = 50))
+
+ggsave("filename.png", device = ragg::agg_png())
+```
+
+
+## Colour palettes
+
+## Remember it is an iterative process
+
+## Import data
+
+```{r}
+production <- read_csv("20211012/production.csv") %>% 
+  janitor::clean_names() %>% 
+  rename(seafood_prod = new_food_balances_fish_seafood_2960_production_5511_1000_tonnes)
+
+consumption_pc <- read_csv("20211012/consumption_pc.csv") %>% 
+  janitor::clean_names() %>% 
+  rename(seafood_con_pc = fish_seafood_food_supply_quantity_kg_capita_yr_fao_2020)
+
+population <- read_csv("20211012/population.csv") %>% 
+  janitor::clean_names() %>% 
+  rename(population = population_historical_estimates_and_future_projections)
+
+library(sf)
+countries <- read_sf("../../geospatial_data/vector/countries/ne_10m_admin_0_countries/ne_10m_admin_0_countries.shp")
+
+ggplot() +
+  geom_sf(data = countries)
+  
+```
+
+## Clean data
+
+May be use these shape files for country boundaries
+
+https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-0-details/
+
+```{r}
+prod_2017 <- production %>% 
+  filter(year == 2017)
+
+con_pc_2017 <- consumption_pc %>% 
+  filter(year == 2017)
+
+pop_2017 <- population %>% 
+  filter(year == 2017)
+
+net_2017 <- prod_2017 %>% 
+  full_join(con_pc_2017) %>% 
+  left_join(pop_2017) %>% 
+  na.omit() %>% 
+  mutate(seafood_con = seafood_con_pc * population / 1000,
+         net = seafood_prod - seafood_con)
+
+View(net_2017)
+View(countries)
+
+countries %>% 
+  select(ISO_A3_EH) %>% 
+  rename(code = ISO_A3_EH) %>% 
+  left_join(net_2017) %>% 
+  #na.omit() %>% 
+  
+  ggplot() +
+  geom_sf(aes(fill = net), size = 0.05♣) +
+  scale_fill_distiller(palette = "RdBu")
+
+
+  # summarise(total_prod = sum(seafood_prod),
+  #           total_con = sum(seafood_con))
+  
+```
+
+## Explore the data
+
+```{r}
+
+```
+
+## Explore the context of the data
+
+-   **Who collected the data?**
+
+-   **Why was the data collected?**
+
+-   **What is the data used for?**
+
+-   **Are there some other datasets that might be useful for comparisons?**
+
+## Think about the audience
+
++-----------------------------------------------------------------------------------+-------+
+| To think about                                                                    | Notes |
++===================================================================================+=======+
+| Can you think of a group of people who might view the visualisations?             |       |
++-----------------------------------------------------------------------------------+-------+
+| Can you think of a specific person who might view the visualizations?             |       |
++-----------------------------------------------------------------------------------+-------+
+| What do want the audience to know or be able to after viewing the visualizations? |       |
++-----------------------------------------------------------------------------------+-------+
+| What expectations might the audience have about visualisations of this data?      |       |
++-----------------------------------------------------------------------------------+-------+
+
+## Ask some questions to be answered by the visualizations
+
+1.  ...
+
+2.  ...
+
+## Summarize the story that the visualizations can help tell
+
+Based on the questions above, the story might go something like this:
+
+-   ...
+
+-   ...
+
+## Create the visualisation/s
+
+### Visualization 1 (question n)
+
++-------------+---------------------+-----------------------------------------------+
+| Question    | Answer (i.e. title) | Notes to consider in design, chart types etc. |
++=============+=====================+===============================================+
+|             |                     |                                               |
++-------------+---------------------+-----------------------------------------------+
+
+```{r}
+
+```
+
+### Visualization x (question n)
+
++-------------+---------------------+-----------------------------------------------+
+| Question    | Answer (i.e. title) | Notes to consider in design, chart types etc. |
++=============+=====================+===============================================+
+|             |                     |                                               |
++-------------+---------------------+-----------------------------------------------+
+
+```{r}
+
+```
+
+### Visualization x (question n)
+
++-------------+---------------------+-----------------------------------------------+
+| Question    | Answer (i.e. title) | Notes to consider in design, chart types etc. |
++=============+=====================+===============================================+
+|             |                     |                                               |
++-------------+---------------------+-----------------------------------------------+
+
+```{r}
+
+```
+
+## Export the visualizations for editing
+
+Some useful image sizes (mm unless stated)
+
++---------------------------------------------------+--------+---------+
+| Purpose                                           | Width  | Height  |
++===================================================+========+=========+
+| Single plot for Twitter                           |        |         |
++---------------------------------------------------+--------+---------+
+|                                                   |        |         |
++---------------------------------------------------+--------+---------+
+|                                                   |        |         |
++---------------------------------------------------+--------+---------+
+
+```{r}
+
+file_folder <- ""
+file_name <- "holding_name"
+
+ggsave(str_c(file_folder, file_name, ".svg"))
+
+# if saving as a pdf use device = cairo_pdf in ggsave 
+```
+
+## Import back in the vizualisation as an image
+
+## Consider how well the overall design works
+
+Based on [Flowing Data](https://flowingdata.com/visualization-for-clarity/designing-for-an-audience/adjusting-for-the-differences/).
+
+Think about each issue (in bold below) as a continuum rather than a check-box.
+
++-----------------------------------------------------+--------------------------------------------------------------+----------+
+| Question to consider                                | Tips                                                         | Notes    |
++=====================================================+==============================================================+==========+
+| Are the **encodings** explained?                    | Air on the side of too much explanation ...                  |          |
++-----------------------------------------------------+--------------------------------------------------------------+----------+
+| Is the **context** explained?                       | Titles, subtitles                                            |          |
+|                                                     |                                                              |          |
+|                                                     | Annotate                                                     |          |
+|                                                     |                                                              |          |
+|                                                     | Use colour to highlight                                      |          |
++-----------------------------------------------------+--------------------------------------------------------------+----------+
+| Does it have **readability** like text?             | Think visual hierarchy *(as when laying out text)*           |          |
++-----------------------------------------------------+--------------------------------------------------------------+----------+
+| Do the **aesthetics** align with the topic/message? | Serious topic -\> dark colours, straight-forward chart types |          |
++-----------------------------------------------------+--------------------------------------------------------------+----------+
+
+## Remember it is an iterative process
+
