@@ -143,19 +143,52 @@ net_2017 <- prod_2017 %>%
 View(net_2017)
 View(countries)
 
-countries %>% 
+library(colorspace)
+
+plotting_df <- countries %>% 
   select(ISO_A3_EH) %>% 
   rename(code = ISO_A3_EH) %>% 
   left_join(net_2017) %>% 
-  #na.omit() %>% 
+  mutate(code = na_if(code, "-99")) %>% 
+  filter(!is.na(code))
+
+plotting_missing <- plotting_df %>% 
+  filter(is.na(net)) %>% 
+  filter(code != "ATA")
+
+plotting_data_available <- plotting_df %>% 
+  filter(!is.na(net)) %>% 
+  mutate(net_binned = cut(net/1e6, breaks = c(-3, -0.1, 0.1, 9)))
   
   ggplot() +
-  geom_sf(aes(fill = net), size = 0.05♣) +
-  scale_fill_distiller(palette = "RdBu")
+  geom_sf(data = plotting_missing, size = 0.1, fill = "grey90", colour = "white") +
+  geom_sf(data = plotting_data_available,
+          mapping = aes(fill = net_binned), size = 0.1, colour = "white") +
+  #scale_fill_distiller(palette = "RdBu")
+  # colorspace::scale_fill_continuous_divergingx(mid = 0, palette = "Tropic", 
+  #                                              rev = TRUE, limits = c(-2.5, 10)) +
+  scale_fill_manual(values = c("#BD6F97", "#E6E7E4", "#6F97BD")) +
+  theme_void() +
+  theme(legend.position = "top",
+        plot.background = element_rect(fill = "grey97"))
 
 
+ggsave("20211012/map.svg")
+  
   # summarise(total_prod = sum(seafood_prod),
   #           total_con = sum(seafood_con))
+
+
+plotting_data_available %>% 
+  st_drop_geometry() %>% 
+  filter(net_binned != "(-0.1,0.1]") %>% 
+  mutate(entity = fct_reorder(entity, net)) %>% 
+  distinct() %>% 
+  
+  ggplot() +
+  geom_col(aes(x = net, y = entity, fill = net_binned)) +
+  scale_fill_manual(values = c("#BD6F97", "#6F97BD")) +
+  theme_cjmr_explanatory()
   
 ```
 
