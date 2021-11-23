@@ -169,14 +169,20 @@ plotting_data_available <- plotting_df %>%
   #                                              rev = TRUE, limits = c(-2.5, 10)) +
   scale_fill_manual(values = c("#BD6F97", "#E6E7E4", "#6F97BD")) +
   theme_void() +
-  theme(legend.position = "top",
+  theme(legend.position = "none",
         plot.background = element_rect(fill = "grey97"))
 
 
-ggsave("20211012/map.svg")
+ggsave("20211012/map.svg", units = "mm", width = 185, height = 110)
   
   # summarise(total_prod = sum(seafood_prod),
   #           total_con = sum(seafood_con))
+
+plotting_data_available %>% 
+  slice_max(net)
+
+plotting_data_available %>% 
+  slice_min(net, n = 5)
 
 
 plotting_data_available %>% 
