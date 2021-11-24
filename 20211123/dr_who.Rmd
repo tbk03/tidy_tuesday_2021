@@ -190,17 +190,44 @@ ggplot(mapping = aes(x = date, y = reorder(writer, writer_order))) +
 library(ggbeeswarm)
 pro_writers_episodes %>% 
   mutate(year = year(first_aired)) %>% 
+  group_by(writer) %>% 
+  mutate(writer_n = n(),
+         w_last_ep = max(first_aired)) %>% 
+  ungroup() %>% 
+  filter(!is.na(uk_viewers)) %>%
+  filter(season_number <= 12) %>% 
   
-  ggplot(mapping = aes(writer, year)) +
-  geom_beeswarm(mapping = aes(colour = uk_viewers, size = rating),
-                priority = "density", cex = 2) +
+  ggplot(mapping = aes(reorder(writer, w_last_ep), season_number)) +
+  geom_beeswarm(mapping = aes(fill = uk_viewers, size = rating),
+                groupOnX = TRUE, cex = 1.75, 
+                 shape = 21, colour = "grey90") +
   
-    scale_colour_viridis_c(option = "magma") +
+  #scale_fill_viridis_c(option = "magma") +
+  scale_size_continuous(range = c(2,5)) +
+  scale_fill_gradient(high = "#0083FF", low = "grey90")+
+  scale_y_continuous(breaks = seq(1,12,1)) +
+  
+  labs(x = "Writer") +
   
   #coord_flip() +
-  theme_cjmr_explanatory()
+  theme_cjmr_explanatory() +
+  theme(panel.grid.major.y = element_line(colour = "grey95"))
   
   #geom_jitter(width = 0)
+
+ggsave("20211123/test.svg", height = 110, width = 250, units = "mm")
+
+
+episodes %>% 
+  group_by(season_number) %>% 
+  summarise(ave_views_uk = sum(uk_viewers, na.rm = TRUE) / n()) %>% 
+  filter(season_number <= 12) %>% 
+  
+  ggplot(aes(season_number, ave_views_uk)) +
+  geom_col(fill = "#F2E1D9") +
+  scale_x_continuous(breaks = seq(1,12,1)) +
+  coord_flip() +
+  theme_cjmr_explanatory()
 
 
 season_averages <- episodes %>% 
